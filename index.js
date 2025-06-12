@@ -2,7 +2,7 @@ const express = require('express')
 const cors = require('cors')
 const app = express();
 const port = process.env.port || 3000;
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
 
 // middleWare
@@ -28,8 +28,14 @@ async function run() {
     await client.connect();
 
     const eventsCollection = client.db('athleticEvent').collection('events');
+    // events api
+app.get('/events', async(req,res)=> {
+    const cursor = eventsCollection.find()
+    const result = await cursor.toArray()
+    res.send(result)
+})
 
-    // athletic api
+    //featured events api
 app.get('/featured-events', async(req, res) => {
   
         const events = await eventsCollection.find().sort({date: 1})
@@ -37,6 +43,15 @@ app.get('/featured-events', async(req, res) => {
         res.send(events)
    
 })
+
+//single event details
+app.get('/events/:id', async(req,res)=> {
+const id = req.params.id;
+const query = {_id : new ObjectId(id)}
+const result = await eventsCollection.findOne(query);
+res.send(result)
+})
+
 
 
 
