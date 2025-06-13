@@ -1,7 +1,7 @@
 const express = require('express')
 const cors = require('cors')
 const app = express();
-const port = process.env.port || 3000;
+const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
 
@@ -22,13 +22,57 @@ const client = new MongoClient(uri, {
   }
 });
 
+// jwt verfication middleware
+const verifyJWT = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if(!authHeader) return res.status(401).send({ message: 'Unauthorized' });
+
+    const token = authHeader.split(' ')[1]
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) return res.status(403).send({ message: 'Forbidden' });
+        req.user = decoded;
+        next();
+      });
+}
+
 async function run() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
+    
     await client.connect();
 
     const eventsCollection = client.db('athleticEvent').collection('events');
-    // events api
+    const bookingsCollection = client.db('athleticEvent').collection('bookings')
+
+    app.post('/events', async(req,res)=> {
+        const eventData = req.body;
+
+
+        const requiredFields = [
+            'eventName',
+            'eventType',
+            'eventDate',
+            'description',
+            'image',
+            'creatorEmail',
+            'creatorName',
+          ];
+          const missingFields = requiredFields.filter(field => !eventData[field]);
+    
+          if (missingFields.length > 0) {
+            return res.status(400).json({
+              success: false,
+              message: `Missing fields: ${missingFields.join(', ')}`
+            });
+          }
+
+          const result = await eventsCollection.insertOne(eventData);
+          res.status(201).json({
+            success: true,
+            message: 'Event created successfully',
+            insertedId: result.insertedId,
+          });
+
+    })
 app.get('/events', async(req,res)=> {
     const cursor = eventsCollection.find()
     const result = await cursor.toArray()
@@ -52,8 +96,35 @@ const result = await eventsCollection.findOne(query);
 res.send(result)
 })
 
+app.post('/bookings', verifyJWT, async(req,res) => {
+    const booking = req.body;
+    const exists = await bookingsCollection.findOne({
+        eventId: booking.eventId,
+        userEmail: booking.userEmail
+    })
+    if (exists) {
+        return res.status(409).send({ message: 'Already booked this event.' });
+      }
+
+      const result = await bookingsCollection.insertOne(booking);
+      res.status(201).send(result);
+})
+
+app.get('/myBookings', verifyJWT, async(req, res)=> {
+    const email = req.query.email;
+    if (req.user.email !== email) {
+        return res.status(403).send({ message: 'Forbidden' });
+      }
 
 
+      const result = await bookingsCollection.find({ userEmail: email }).toArray();
+      res.send(result);
+})
+ app.delete('/myBookings/:id', verifyJWT, async(req,res) => {
+    const id = req.params.id;
+    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
+    res.send(result);
+ })
 
 
     // Send a ping to confirm a successful connection
@@ -68,9 +139,9 @@ run().catch(console.dir);
 
 
 app.get('/', (req,res)=>{
-    res.send('Career Code is Cooking')
+    res.send('Athlofy Backend is running')
 })
 
 app.listen(port, ()=> {
-console.log(`Career Code server is running on port ${port}`)
+console.log(`Athlofy server is running on port ${port}`)
 })
