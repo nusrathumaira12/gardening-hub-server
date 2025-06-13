@@ -1,5 +1,6 @@
 const express = require('express')
 const cors = require('cors')
+// const jwt = require('jsonwebtoken'); 
 const app = express();
 const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -22,26 +23,27 @@ const client = new MongoClient(uri, {
   }
 });
 
-// jwt verfication middleware
-const verifyJWT = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if(!authHeader) return res.status(401).send({ message: 'Unauthorized' });
+// // jwt verification middleware
+// const verifyJWT = (req, res, next) => {
+//     const authHeader = req.headers.authorization;
+//     if(!authHeader) return res.status(401).send({ message: 'Unauthorized' });
 
-    const token = authHeader.split(' ')[1]
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-        if (err) return res.status(403).send({ message: 'Forbidden' });
-        req.user = decoded;
-        next();
-      });
-}
+//     const token = authHeader.split(' ')[1]
+//     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+//         if (err) return res.status(403).send({ message: 'Forbidden' });
+//         req.user = decoded;
+//         next();
+//       });
+// }
 
 async function run() {
   try {
     
     await client.connect();
 
-    const eventsCollection = client.db('athleticEvent').collection('events');
-    const bookingsCollection = client.db('athleticEvent').collection('bookings')
+    const db = client.db('athleticEvent');
+    const eventsCollection = db.collection('events');
+    const bookingsCollection = db.collection('myBookings');
 
     app.post('/events', async(req,res)=> {
         const eventData = req.body;
@@ -73,11 +75,10 @@ async function run() {
           });
 
     })
-app.get('/events', async(req,res)=> {
-    const cursor = eventsCollection.find()
-    const result = await cursor.toArray()
-    res.send(result)
-})
+    app.get('/events', async (req, res) => {
+        const result = await eventsCollection.find().toArray();
+        res.send(result);
+      });
 
     //featured events api
 app.get('/featured-events', async(req, res) => {
@@ -96,42 +97,51 @@ const result = await eventsCollection.findOne(query);
 res.send(result)
 })
 
-app.post('/bookings', verifyJWT, async(req,res) => {
+  // ✅ Book an event
+  app.post('/bookings', async (req, res) => {
     const booking = req.body;
+
+    if (!booking.userEmail || !booking.eventId) {
+      return res.status(400).send({ message: 'Missing userEmail or eventId' });
+    }
+
     const exists = await bookingsCollection.findOne({
-        eventId: booking.eventId,
-        userEmail: booking.userEmail
-    })
+      eventId: booking.eventId,
+      userEmail: booking.userEmail
+    });
+
     if (exists) {
-        return res.status(409).send({ message: 'Already booked this event.' });
-      }
+      return res.status(409).send({ message: 'Already booked this event.' });
+    }
 
-      const result = await bookingsCollection.insertOne(booking);
-      res.status(201).send(result);
-})
+    const result = await bookingsCollection.insertOne(booking);
+    res.status(201).send(result);
+  });
 
-app.get('/myBookings', verifyJWT, async(req, res)=> {
+
+app.get('/myBookings',  async(req, res)=> {
     const email = req.query.email;
-    if (req.user.email !== email) {
-        return res.status(403).send({ message: 'Forbidden' });
-      }
+    // if (!email) {
+    //     return res.status(403).send({ message: 'Forbidden' });
+    //   }
+    if (!email) return res.status(400).send({ message: 'Email query is required' });
 
 
       const result = await bookingsCollection.find({ userEmail: email }).toArray();
       res.send(result);
 })
- app.delete('/myBookings/:id', verifyJWT, async(req,res) => {
+ app.delete('/myBookings/:id',  async(req,res) => {
     const id = req.params.id;
     const result = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
     res.send(result);
  })
 
 
-    // Send a ping to confirm a successful connection
+    
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
-    // Ensures that the client will close when you finish/error
+   
     // await client.close();
   }
 }
