@@ -2,6 +2,7 @@ const express = require('express')
 const cors = require('cors')
 const jwt = require('jsonwebtoken'); 
 const app = express();
+const cookieParser = require('cookie-parser')
 const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
@@ -12,6 +13,7 @@ app.use(cors({
     credentials: true
 }))
 app.use(express.json())
+app.use(cookieParser())
 
 
 
