@@ -1,6 +1,6 @@
 const express = require('express')
 const cors = require('cors')
-// const jwt = require('jsonwebtoken'); 
+const jwt = require('jsonwebtoken'); 
 const app = express();
 const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -44,6 +44,14 @@ async function run() {
     const db = client.db('athleticEvent');
     const eventsCollection = db.collection('events');
     const bookingsCollection = db.collection('myBookings');
+
+    // jwt token related api
+    app.post('/jwt', async(req, res)=> {
+        const userInfo = req.body;
+
+        const token = jwt.sign(userInfo, process.env.JWT_SECRET, { expiresIn: '2h' });
+        res.send({success: true})
+    })
 
     app.post('/events', async(req,res)=> {
         const eventData = req.body;
