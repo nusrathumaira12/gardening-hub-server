@@ -15,11 +15,24 @@ app.use(cors({
 app.use(express.json())
 app.use(cookieParser())
 
+const logger = (req,res,next) => {
+    console.log('inside the logger middleware');
+    next()
+}
 
+const verifyToken = (req,res,next) => {
+    const token = req?.cookies?.token ;
+    if(!token) return res.status(401).send({ message: 'unauhtorized access' })
 
+jwt.verify(token, process.env.JWT_SECRET, (err, decoded)=> {
+    if(err) return   res.status(403).send({ message: 'Forbidden - Invalid token' });
+    req.decoded = decoded
+    next();
+})
+}
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qnxzilo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -27,6 +40,8 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   }
 });
+
+
 
 // // jwt verification middleware
 // const verifyJWT = (req, res, next) => {
@@ -58,7 +73,8 @@ async function run() {
 
         res.cookie('token', token,{
             httpOnly: true,
-            secure: false
+            secure: false,
+             sameSite: 'strict',
         })
         res.send({success: true})
     })
@@ -105,6 +121,7 @@ app.get('/featured-events', async(req, res) => {
         .limit(6).toArray();
         res.send(events)
    
+
 })
 
 //single event details
@@ -113,6 +130,29 @@ const id = req.params.id;
 const query = {_id : new ObjectId(id)}
 const result = await eventsCollection.findOne(query);
 res.send(result)
+})
+
+// manage events
+app.get('/myCreatedEvents', verifyToken, async(req, res) => {
+    const email = req.query.email;
+    if(!email) return res.status(400).send({message: 'Email required'})
+     if(req.decoded.email !== email)  return  res.status(403).send({ message: 'Forbidden' })
+
+        const result = await eventsCollection.find({ creatorEmail : email}).toArray();
+        res.send(result);
+})
+
+// delete events
+app.delete('/events/:id', verifyToken, async(req, res)=> {
+    const id = req.params.id;
+    const email = req.decoded.email;
+
+    const event = await eventsCollection.findOne({_id : new ObjectId(id)})
+    if (!event) return res.status(404).send({ message: 'Event not found' });
+    if(event.creatorEmail !== email) return res.status(403).send({ message: 'Forbidden - Not your event' });
+
+    const result = await eventsCollection.deleteOne({ _id: new ObjectId(id) })
+    res.send(result);
 })
 
   // ✅ Book an event
@@ -137,19 +177,24 @@ res.send(result)
   });
 
 
-app.get('/myBookings',  async(req, res)=> {
+app.get('/myBookings', verifyToken, async(req, res)=> {
     const email = req.query.email;
-    // if (!email) {
-    //     return res.status(403).send({ message: 'Forbidden' });
-    //   }
+
     if (!email) return res.status(400).send({ message: 'Email query is required' });
+    if (req.decoded.email !== email) return res.status(403).send({ message: 'Forbidden' });
 
-
-      const result = await bookingsCollection.find({ userEmail: email }).toArray();
+      const result = await bookingsCollection.find({  userEmail: email}).toArray();
       res.send(result);
 })
- app.delete('/myBookings/:id',  async(req,res) => {
+ app.delete('/myBookings/:id',verifyToken,  async(req,res) => {
     const id = req.params.id;
+    const email = req.decoded.email;
+
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
+    if (!booking) return res.status(404).send({ message: 'Booking not found' });
+    if (booking.userEmail !== email) {
+        return res.status(403).send({ message: 'Forbidden - Not your booking' });
+    }
     const result = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
     res.send(result);
  })
