@@ -7,7 +7,10 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
 
 // middleWare
-app.use(cors())
+app.use(cors({
+    origin: ['http://localhost:5173'],
+    credentials: true
+}))
 app.use(express.json())
 
 
@@ -50,6 +53,11 @@ async function run() {
         const userInfo = req.body;
 
         const token = jwt.sign(userInfo, process.env.JWT_SECRET, { expiresIn: '2h' });
+
+        res.cookie('token', token,{
+            httpOnly: true,
+            secure: false
+        })
         res.send({success: true})
     })
 
