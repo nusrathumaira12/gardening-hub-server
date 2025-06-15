@@ -155,6 +155,24 @@ app.delete('/events/:id', verifyToken, async(req, res)=> {
     res.send(result);
 })
 
+// update Event
+app.patch('/events/:id', verifyToken, async (req, res) => {
+    const id = req.params.id;
+    const email = req.decoded.email;
+    const event = await eventsCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!event) return res.status(404).send({ message: 'Event not found' });
+    if (event.creatorEmail !== email) return res.status(403).send({ message: 'Forbidden - Not your event' });
+
+    const updatedEvent = req.body;
+    const result = await eventsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updatedEvent }
+    );
+
+    res.send(result);
+});
+
   // ✅ Book an event
   app.post('/bookings', async (req, res) => {
     const booking = req.body;
