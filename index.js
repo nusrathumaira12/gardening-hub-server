@@ -41,20 +41,14 @@ const client = new MongoClient(uri, {
   }
 });
 
+const verifyTokenEmail = (req,res,next)=> {
+    if(req.query.email !== req.decoded.email){
+       return res.status(403).send({message: 'forbidden access' })
+    }
+    next()
+}
 
 
-// // jwt verification middleware
-// const verifyJWT = (req, res, next) => {
-//     const authHeader = req.headers.authorization;
-//     if(!authHeader) return res.status(401).send({ message: 'Unauthorized' });
-
-//     const token = authHeader.split(' ')[1]
-//     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-//         if (err) return res.status(403).send({ message: 'Forbidden' });
-//         req.user = decoded;
-//         next();
-//       });
-// }
 
 async function run() {
   try {
@@ -65,7 +59,7 @@ async function run() {
     const eventsCollection = db.collection('events');
     const bookingsCollection = db.collection('myBookings');
 
-    // jwt token related api
+   
     app.post('/jwt', async(req, res)=> {
         const userInfo = req.body;
 
@@ -114,7 +108,7 @@ async function run() {
         res.send(result);
       });
 
-    //featured events api
+  
 app.get('/featured-events', async(req, res) => {
   
         const events = await eventsCollection.find().sort({date: 1})
@@ -124,7 +118,7 @@ app.get('/featured-events', async(req, res) => {
 
 })
 
-//single event details
+
 app.get('/events/:id', async(req,res)=> {
 const id = req.params.id;
 const query = {_id : new ObjectId(id)}
@@ -132,17 +126,17 @@ const result = await eventsCollection.findOne(query);
 res.send(result)
 })
 
-// manage events
-app.get('/myCreatedEvents', verifyToken, async(req, res) => {
+
+app.get('/myCreatedEvents', verifyToken,verifyTokenEmail, async(req, res) => {
     const email = req.query.email;
     if(!email) return res.status(400).send({message: 'Email required'})
-     if(req.decoded.email !== email)  return  res.status(403).send({ message: 'Forbidden' })
+  
 
         const result = await eventsCollection.find({ creatorEmail : email}).toArray();
         res.send(result);
 })
 
-// delete events
+
 app.delete('/events/:id', verifyToken, async(req, res)=> {
     const id = req.params.id;
     const email = req.decoded.email;
@@ -155,7 +149,7 @@ app.delete('/events/:id', verifyToken, async(req, res)=> {
     res.send(result);
 })
 
-// update Event
+
 app.patch('/events/:id', verifyToken, async (req, res) => {
     const id = req.params.id;
     const email = req.decoded.email;
@@ -173,7 +167,7 @@ app.patch('/events/:id', verifyToken, async (req, res) => {
     res.send(result);
 });
 
-  // ✅ Book an event
+  
   app.post('/bookings', async (req, res) => {
     const booking = req.body;
 
@@ -195,11 +189,11 @@ app.patch('/events/:id', verifyToken, async (req, res) => {
   });
 
 
-app.get('/myBookings', verifyToken, async(req, res)=> {
+app.get('/myBookings', verifyToken,verifyTokenEmail, async(req, res)=> {
     const email = req.query.email;
 
     if (!email) return res.status(400).send({ message: 'Email query is required' });
-    if (req.decoded.email !== email) return res.status(403).send({ message: 'Forbidden' });
+   
 
       const result = await bookingsCollection.find({  userEmail: email}).toArray();
       res.send(result);
