@@ -15,17 +15,19 @@ app.use(cors({
 app.use(express.json())
 app.use(cookieParser())
 
-const logger = (req,res,next) => {
-    console.log('inside the logger middleware');
-    next()
-}
+
 
 const verifyToken = (req,res,next) => {
     const token = req?.cookies?.token ;
     if(!token) return res.status(401).send({ message: 'unauhtorized access' })
 
 jwt.verify(token, process.env.JWT_SECRET, (err, decoded)=> {
-    if(err) return   res.status(403).send({ message: 'Forbidden - Invalid token' });
+    if(err){
+        console.error('JWT Verify Error:', err); 
+    
+        
+        return   res.status(403).send({ message: 'Forbidden - Invalid token' });
+    }
     req.decoded = decoded
     next();
 })
@@ -73,7 +75,7 @@ async function run() {
         res.send({success: true})
     })
 
-    app.post('/events', async(req,res)=> {
+    app.post('/events',verifyToken, async(req,res)=> {
         const eventData = req.body;
 
 
@@ -168,7 +170,7 @@ app.patch('/events/:id', verifyToken, async (req, res) => {
 });
 
   
-  app.post('/bookings', async (req, res) => {
+  app.post('/bookings',verifyToken, async (req, res) => {
     const booking = req.body;
 
     if (!booking.userEmail || !booking.eventId) {
