@@ -19,7 +19,7 @@ app.use(cookieParser())
 
 const verifyToken = (req,res,next) => {
     const token = req?.cookies?.token ;
-    if(!token) return res.status(401).send({ message: 'unauhtorized access' })
+    if(!token) return res.status(401).send({ message: 'unauthtorized access' })
 
 jwt.verify(token, process.env.JWT_SECRET, (err, decoded)=> {
     if(err){
