@@ -1,40 +1,23 @@
-const express = require('express')
-const cors = require('cors')
-const jwt = require('jsonwebtoken'); 
-const app = express();
-const cookieParser = require('cookie-parser')
-const port = process.env.PORT || 3000;
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const express = require('express');
+const cors = require('cors');
 require('dotenv').config()
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const app = express();
+const port = process.env.PORT || 3000;
 
-// middleWare
-app.use(cors({
-    origin: ['http://localhost:5173'],
-    credentials: true
-}))
+
+app.use(cors())
 app.use(express.json())
-app.use(cookieParser())
 
 
 
-const verifyToken = (req,res,next) => {
-    const token = req?.cookies?.token ;
-    if(!token) return res.status(401).send({ message: 'unauthtorized access' })
-
-jwt.verify(token, process.env.JWT_SECRET, (err, decoded)=> {
-    if(err){
-        console.error('JWT Verify Error:', err); 
-    
-        
-        return   res.status(403).send({ message: 'Forbidden - Invalid token' });
-    }
-    req.decoded = decoded
-    next();
-})
-}
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qnxzilo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 
+
+
+const uri = `mongodb+srv://${process.env.GARDENINGDB_USER}:${process.env.GARDENINGDB_PASS}@cluster0.qnxzilo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -43,192 +26,156 @@ const client = new MongoClient(uri, {
   }
 });
 
-const verifyTokenEmail = (req,res,next)=> {
-    if(req.query.email !== req.decoded.email){
-       return res.status(403).send({message: 'forbidden access' })
-    }
-    next()
-}
-
-
-
 async function run() {
   try {
-    
-    await client.connect();
+    // Connect the client to the server	(optional starting in v4.7)
+    // await client.connect();
 
-    const db = client.db('athleticEvent');
-    const eventsCollection = db.collection('events');
-    const bookingsCollection = db.collection('myBookings');
+    const tipsCollection = client.db('tipDB').collection('tips')
+    const usersCollection = client.db('tipDB').collection('users')
+    const db = client.db("gardenCommunity");
+    const gardenersCollection = db.collection("gardeners")
 
-   
-    app.post('/jwt', async(req, res)=> {
-        const userInfo = req.body;
-
-        const token = jwt.sign(userInfo, process.env.JWT_SECRET, { expiresIn: '2h' });
-
-        res.cookie('token', token,{
-            httpOnly: true,
-            secure: false,
-             sameSite: 'strict',
-        })
-        res.send({success: true})
-    })
-
-    app.post('/events',verifyToken, async(req,res)=> {
-        const eventData = req.body;
-
-
-        const requiredFields = [
-            'eventName',
-            'eventType',
-            'eventDate',
-            'description',
-            'image',
-            'creatorEmail',
-            'creatorName',
-          ];
-          const missingFields = requiredFields.filter(field => !eventData[field]);
-    
-          if (missingFields.length > 0) {
-            return res.status(400).json({
-              success: false,
-              message: `Missing fields: ${missingFields.join(', ')}`
-            });
-          }
-
-          const result = await eventsCollection.insertOne(eventData);
-          res.status(201).json({
-            success: true,
-            message: 'Event created successfully',
-            insertedId: result.insertedId,
-          });
-
-    })
-    app.get('/events', async (req, res) => {
-        const result = await eventsCollection.find().toArray();
-        res.send(result);
-      });
-
-  
-app.get('/featured-events', async(req, res) => {
-  
-        const events = await eventsCollection.find().sort({date: 1})
-        .limit(6).toArray();
-        res.send(events)
-   
-
-})
-
-
-app.get('/events/:id', async(req,res)=> {
-const id = req.params.id;
-const query = {_id : new ObjectId(id)}
-const result = await eventsCollection.findOne(query);
+    app.get('/tips', async(req, res)=> {
+const result = await tipsCollection.find({ availability: 'Public' }).toArray();
 res.send(result)
-})
+    })
 
 
-app.get('/myCreatedEvents', verifyToken,verifyTokenEmail, async(req, res) => {
+
+    // Top trending tips 
+    app.get('/top-tips', async(req,res)=> {
+        const topTips = await tipsCollection
+        .find({availability: 'Public'})
+        .sort({ totalLiked: -1 })
+        .limit(6)
+        .toArray();
+      res.send(topTips);
+    })
+
+    // get a single tip by id
+    app.get('/tips/:id', async(req, res) => {
+        const id = req.params.id;
+
+        try {
+            const result = await tipsCollection.findOne({ _id: new ObjectId(id) });
+            if (!result) {
+              return res.status(404).send({ error: 'Tip not found' });
+            }
+            res.send(result);
+          } catch (error) {
+            console.error('Error fetching tip:', error);
+            res.status(500).send({ error: 'Server error' });
+          }
+    })
+
+// get my tips
+app.get('/my-tips', async (req, res) => {
     const email = req.query.email;
-    if(!email) return res.status(400).send({message: 'Email required'})
-  
-
-        const result = await eventsCollection.find({ creatorEmail : email}).toArray();
-        res.send(result);
-})
-
-
-app.delete('/events/:id', verifyToken, async(req, res)=> {
-    const id = req.params.id;
-    const email = req.decoded.email;
-
-    const event = await eventsCollection.findOne({_id : new ObjectId(id)})
-    if (!event) return res.status(404).send({ message: 'Event not found' });
-    if(event.creatorEmail !== email) return res.status(403).send({ message: 'Forbidden - Not your event' });
-
-    const result = await eventsCollection.deleteOne({ _id: new ObjectId(id) })
-    res.send(result);
-})
-
-
-app.patch('/events/:id', verifyToken, async (req, res) => {
-    const id = req.params.id;
-    const email = req.decoded.email;
-    const event = await eventsCollection.findOne({ _id: new ObjectId(id) });
-
-    if (!event) return res.status(404).send({ message: 'Event not found' });
-    if (event.creatorEmail !== email) return res.status(403).send({ message: 'Forbidden - Not your event' });
-
-    const updatedEvent = req.body;
-    const result = await eventsCollection.updateOne(
-        { _id: new ObjectId(id) },
-        { $set: updatedEvent }
-    );
-
-    res.send(result);
-});
-
-  
-  app.post('/bookings',verifyToken, async (req, res) => {
-    const booking = req.body;
-
-    if (!booking.userEmail || !booking.eventId) {
-      return res.status(400).send({ message: 'Missing userEmail or eventId' });
-    }
-
-    const exists = await bookingsCollection.findOne({
-      eventId: booking.eventId,
-      userEmail: booking.userEmail
-    });
-
-    if (exists) {
-      return res.status(409).send({ message: 'Already booked this event.' });
-    }
-
-    const result = await bookingsCollection.insertOne(booking);
-    res.status(201).send(result);
+    if (!email) {
+        return res.status(400).send({ error: "Email is required" });
+      }
+    
+      const userTips = await tipsCollection.find({ email }).toArray();
+      res.send(userTips);
   });
 
-
-app.get('/myBookings', verifyToken,verifyTokenEmail, async(req, res)=> {
-    const email = req.query.email;
-
-    if (!email) return res.status(400).send({ message: 'Email query is required' });
-   
-
-      const result = await bookingsCollection.find({  userEmail: email}).toArray();
-      res.send(result);
-})
- app.delete('/myBookings/:id',verifyToken,  async(req,res) => {
+//   Delete a tip by Id
+app.delete('/tips/:id', async(req, res)=> {
     const id = req.params.id;
-    const email = req.decoded.email;
+  const result = await tipsCollection.deleteOne({ _id: new ObjectId(id) });
+  res.send(result);
+})
 
-    const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
-    if (!booking) return res.status(404).send({ message: 'Booking not found' });
-    if (booking.userEmail !== email) {
-        return res.status(403).send({ message: 'Forbidden - Not your booking' });
+
+// Update a tip by ID
+app.put('/tips/:id', async (req, res) => {
+    const id = req.params.id;
+    const updatedTip = req.body;
+  
+    try {
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          Title: updatedTip.Title,
+          plantType: updatedTip.plantType,
+          difficulty: updatedTip.difficulty,
+          category: updatedTip.category,
+          image: updatedTip.image,
+          availability: updatedTip.availability,
+          description: updatedTip.description
+        }
+      };
+  
+      const result = await tipsCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    } catch (error) {
+      console.error('Error updating tip:', error);
+      res.status(500).send({ error: 'Failed to update tip' });
     }
-    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
-    res.send(result);
- })
+  });
+  
+  
+
+    // patch to increase like
+    app.patch("/tips/like/:id", async(req,res) => {
+        const tipId = req.params.id;
+        const filter = { _id: new ObjectId(tipId)};
+        const update = { $inc : {totalLiked: 1}};
 
 
-    
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        const result = await tipsCollection.updateOne(filter, update)
+        res.send(result);
+    });
+
+    app.post('/tips', async(req,res)=> {
+const newTip = req.body;
+console.log(newTip)
+const result = await tipsCollection.insertOne(newTip)
+res.send(result)
+    })
+
+    // get all gardeners
+    app.get("/gardeners", async(req, res)=> {
+        const all = await gardenersCollection
+        .find().toArray();
+        res.send(all)
+    });
+
+    // get Featured(Active) Gardeners
+    app.get("/featured-gardeners", async(req, res)=> {
+        const active = await gardenersCollection
+        .find({status: "active"})
+        .limit(6)
+        .toArray()
+        res.send(active)
+    });
+
+// User related ApI
+app.post('/users', async(req,res)=> {
+    const userProfile = req.body;
+    console.log(userProfile)
+    const result = await usersCollection.insertOne(userProfile)
+    res.send(result)
+})
+
+
+    // Send a ping to confirm a successful connection
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
-   
+    // Ensures that the client will close when you finish/error
     // await client.close();
   }
 }
 run().catch(console.dir);
 
 
-app.get('/', (req,res)=>{
-    res.send('Athlofy Backend is running')
+
+app.get('/', (req,res)=> {
+    res.send('Gardening Community server is running.')
 })
 
-app.listen(port, ()=> {
-console.log(`Athlofy server is running on port ${port}`)
+app.listen(port, () => {
+    console.log(`Gardening server is running on port ${port}`)
 })
